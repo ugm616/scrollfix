@@ -1,5 +1,7 @@
 body { font: 13px system-ui, sans-serif; width: 320px; padding: 12px; }
-h1 { font-size: 16px; margin: 0 0 8px; }
+.brand { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.brand img { display: block; }
+h1 { font-size: 16px; margin: 0; }
 .row { display: flex; gap: 6px; align-items: center; margin: 8px 0; }
 .row input[type="text"] { flex: 1; padding: 4px; }
 .title { font-weight: 600; margin: 10px 0 2px; }
