@@ -28,8 +28,6 @@
     list.some((h) => host === h || host.endsWith("." + h));
 
   function isActive(s) {
-    // mode "list": only run on sites in enableList
-    // mode "all":  run everywhere except sites in disableList
     return s.mode === "all" ? !matches(s.disableList) : matches(s.enableList);
   }
 
@@ -45,13 +43,12 @@
 
   const parentOf = (e) =>
     e.parentElement ||
-    (e.getRootNode && e.getRootNode().host) || // climb out of shadow DOM
+    (e.getRootNode && e.getRootNode().host) ||
     null;
 
   function effectiveBg(el) {
     const chain = [];
     for (let e = el; e; e = parentOf(e)) chain.push(e);
-    // The page background is often set on <body> while <html> is transparent.
     if (el === document.documentElement && document.body) {
       chain.unshift(document.body);
     }
@@ -67,6 +64,49 @@
       a.g + (b.g - a.g) * t
     )},${Math.round(a.b + (b.b - a.b) * t)})`;
 
+  function parseSize(value) {
+    const n = parseFloat(value);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function isDataLayout(el, cs) {
+    const role = (el.getAttribute && el.getAttribute("role")) || "";
+    const cls = `${el.className || ""}`.toLowerCase();
+    const tag = el.tagName;
+
+    if (tag === "TABLE" || tag === "THEAD" || tag === "TBODY" || tag === "TFOOT" || tag === "TR" || tag === "TD" || tag === "TH") {
+      return true;
+    }
+
+    if (role === "table" || role === "grid" || role === "treegrid") return true;
+
+    if (/\b(table|grid|datatable|data-table|data-grid|sheet|spreadsheet|matrix)\b/.test(cls)) {
+      return true;
+    }
+
+    const display = cs.display;
+    if (display.includes("grid") || display.includes("table")) return true;
+
+    return false;
+  }
+
+  function isWrapCandidate(el, cs) {
+    const o = cs.overflowX;
+    if (!(o === "hidden" || o === "clip" || o === "auto" || o === "scroll")) return false;
+    if (el.scrollWidth - el.clientWidth < MIN_OVERFLOW) return false;
+    if (el.clientWidth < MIN_WIDTH || el.clientHeight < MIN_HEIGHT) return false;
+    if (NO_OVERFLOW_DISPLAY.test(cs.display)) return false;
+    return true;
+  }
+
+  function isInnerScrollable(el, cs) {
+    if (!isDataLayout(el, cs)) return false;
+    if (el.scrollWidth - el.clientWidth < MIN_OVERFLOW) return false;
+    const childCount = el.children ? el.children.length : 0;
+    if (childCount > 0 && el.scrollWidth / Math.max(el.clientWidth, 1) < 1.08) return false;
+    return true;
+  }
+
   // ---------- apply / restore ----------
   function applyStyles(el) {
     const bg = effectiveBg(el);
@@ -75,8 +115,6 @@
     const thumb = mix(bg, fg, 0.45);
     const s = el.style;
     s.setProperty("overflow-x", "auto", "important");
-    // A non-auto scrollbar-color also makes Chrome ignore sites'
-    // ::-webkit-scrollbar { display: none } rules, un-hiding the bar.
     s.setProperty("scrollbar-color", `${thumb} ${track}`, "important");
     s.setProperty("scrollbar-width", "auto", "important");
   }
@@ -101,7 +139,6 @@
     for (const el of [...saved.keys()]) restore(el);
   }
 
-  // Has the page overwritten our inline styles (e.g. a framework re-render)?
   function needsReapply(el) {
     const s = el.style;
     return (
@@ -122,7 +159,6 @@
     }
   }
 
-  // True when the element has horizontal overflow it cannot show a bar for.
   function needsFix(el, cs) {
     const ox = cs.overflowX;
     if (ox === "hidden" || ox === "clip") return true;
@@ -139,8 +175,6 @@
       sw: snap(s, "scrollbar-width"),
     });
     applyStyles(el);
-    // overflow-x:auto turns overflow-y:visible into auto. If that suddenly
-    // clips lots of vertical content (menus, tooltips), undo the change.
     if (!isViewport && yWasVisible && el.scrollHeight - el.clientHeight > 20) {
       restore(el);
       rejected.add(el);
@@ -150,17 +184,27 @@
   function consider(el) {
     if (saved.has(el) || rejected.has(el)) return;
     if (SKIP_TAGS.has(el.tagName)) return;
-    if (typeof el.scrollWidth !== "number") return; // SVG etc.
+    if (typeof el.scrollWidth !== "number") return;
     if (el.scrollWidth - el.clientWidth < MIN_OVERFLOW) return;
     if (el.clientWidth < MIN_WIDTH || el.clientHeight < MIN_HEIGHT) return;
     const cs = getComputedStyle(el);
     if (cs.display === "none" || cs.visibility === "hidden") return;
     if (NO_OVERFLOW_DISPLAY.test(cs.display)) return;
-    if (cs.textOverflow.includes("ellipsis")) return; // intentional truncation
-    if (needsFix(el, cs)) fix(el, cs, false);
+    if (cs.textOverflow && cs.textOverflow.includes("ellipsis")) return;
+
+    // Prefer fixing the innermost data table/grid rather than a generic wrapper.
+    if (isDataLayout(el, cs)) {
+      if (isInnerScrollable(el, cs) && needsFix(el, cs)) {
+        fix(el, cs, false);
+      }
+      return;
+    }
+
+    // Generic overflow containers still get a fix, but only after we have
+    // already handled obvious tables/grids.
+    if (isWrapCandidate(el, cs) && needsFix(el, cs)) fix(el, cs, false);
   }
 
-  // The page itself: overflow on <html> or <body> is propagated to the viewport.
   function considerViewport() {
     const html = document.documentElement;
     const body = document.body;
@@ -176,24 +220,20 @@
   function collect(root, out) {
     for (const el of root.querySelectorAll("*")) {
       out.push(el);
-      if (el.shadowRoot) collect(el.shadowRoot, out); // open shadow roots
+      if (el.shadowRoot) collect(el.shadowRoot, out);
     }
   }
 
   function scan() {
     if (!active) return;
 
-    // 1. Keep previously fixed elements fixed.
     for (const el of [...saved.keys()]) {
       if (!el.isConnected) saved.delete(el);
       else if (needsReapply(el)) applyStyles(el);
     }
 
-    // 2. Find new ones. The page-level check goes first.
     considerViewport();
 
-    // Walk deepest-first so an inner table gets the scrollbar and the outer
-    // wrappers then no longer overflow (avoids double scrollbars).
     const els = [];
     if (document.body) {
       els.push(document.body);
@@ -203,7 +243,7 @@
   }
 
   function schedule() {
-    if (timer) return; // throttle, don't starve on constantly-changing pages
+    if (timer) return;
     timer = setTimeout(() => {
       timer = null;
       scan();
@@ -222,8 +262,8 @@
       attributeFilter: ["style", "class", "hidden", "open", "aria-expanded"],
     });
     window.addEventListener("resize", schedule);
-    window.addEventListener("load", schedule); // images/fonts change widths
-    document.addEventListener("click", schedule, true); // tabs, accordions
+    window.addEventListener("load", schedule);
+    document.addEventListener("click", schedule, true);
   }
 
   function stop() {
