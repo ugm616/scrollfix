@@ -361,6 +361,21 @@ In this mode, the list becomes a **Feature Disabled** list instead of an enabled
 
 ---
 
+## Debug mode (optional)
+
+To see why an element was (or was not) modified, enable debug logging:
+
+- set `debug` to `true` in `chrome.storage.sync` (e.g. from the extension's service-worker console: `chrome.storage.sync.set({ debug: true })`), or
+- on the page, run `localStorage.setItem("scrollfix-debug", "1")` and reload.
+
+Open DevTools and filter the console for `[ScrollFix]`. Each fixed, skipped or reverted element is logged with the reason. Normal users are unaffected.
+
+## Detection notes
+
+- The innermost real scroll container is preferred; tables/grids are handled before generic wrappers.
+- Elements are only modified if in-flow content really overflows (absolutely positioned popovers or off-screen decorations are ignored).
+- Sliders, carousels, tickers, `aria-hidden` and ellipsis-truncated elements are skipped.
+
 ## Notes and limitations
 
 - You may need to refresh a page after changing the site list.
