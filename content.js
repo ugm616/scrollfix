@@ -1,11 +1,23 @@
 (() => {
-  const DEFAULTS = { mode: "list", enableList: [], disableList: [] };
+  const DEFAULTS = { mode: "list", enableList: [], disableList: [], debug: false };
+
+  // ---------- debug mode (opt-in) ----------
+  // Enable with either:
+  //   * chrome.storage.sync key `debug` = true, or
+  //   * localStorage.setItem("scrollfix-debug", "1") on the page, then reload.
+  // When on, every fix / rejection is logged with the element and the reason.
+  let debug = false;
+  try { debug = localStorage.getItem("scrollfix-debug") === "1"; } catch {}
+  const log = (msg, el) => {
+    if (debug) console.log("[ScrollFix]", msg, el);
+  };
 
   // ---------- tuning ----------
   const MIN_OVERFLOW = 4;   // px of hidden content before we bother
   const MIN_WIDTH = 60;     // ignore tiny elements
   const MIN_HEIGHT = 16;
   const SCAN_DELAY = 300;   // ms, throttle between scans
+  const FLOW_SLACK = 2;     // px tolerance when measuring real content overflow
 
   // Elements we never touch (form controls, media, non-rendered nodes).
   const SKIP_TAGS = new Set([
@@ -16,6 +28,10 @@
   // `overflow` does not apply to these display types.
   const NO_OVERFLOW_DISPLAY =
     /^(inline-table|table|table-(row|column)(-group)?|table-(header|footer)-group)$/;
+
+  // Class/id hints for components that clip on purpose (sliders, tickers...).
+  const INTENTIONAL_CLIP =
+    /(^|[\s_-])(carousel|slider|slick|swiper|marquee|ticker|slideshow|gallery|stories|truncate|ellipsis|sr-only|visually-hidden)([\s_-]|$)/;
 
   const saved = new Map();      // element -> original inline values
   const rejected = new WeakSet(); // elements we tried and reverted
@@ -71,7 +87,7 @@
 
   function isDataLayout(el, cs) {
     const role = (el.getAttribute && el.getAttribute("role")) || "";
-    const cls = `${el.className || ""}`.toLowerCase();
+    const cls = (el.getAttribute && el.getAttribute("class") || "").toLowerCase();
     const tag = el.tagName;
 
     if (tag === "TABLE" || tag === "THEAD" || tag === "TBODY" || tag === "TFOOT" || tag === "TR" || tag === "TD" || tag === "TH") {
@@ -105,6 +121,41 @@
     const childCount = el.children ? el.children.length : 0;
     if (childCount > 0 && el.scrollWidth / Math.max(el.clientWidth, 1) < 1.08) return false;
     return true;
+  }
+
+  // True when the element looks like a deliberate clip (slider, ticker...)
+  // or is hidden from users, so forcing a scrollbar would be wrong.
+  function isIntentionalClip(el) {
+    if (el.getAttribute) {
+      if (el.getAttribute("aria-hidden") === "true") return true;
+      const role = el.getAttribute("role");
+      if (role === "presentation" || role === "none") return false;
+      const hint = `${el.getAttribute("class") || ""} ${el.id || ""}`.toLowerCase();
+      if (INTENTIONAL_CLIP.test(hint)) return true;
+    }
+    return false;
+  }
+
+  // Measure real overflow: does any in-flow descendant actually extend past
+  // the element's right (or left) edge? scrollWidth alone also counts
+  // absolutely positioned popovers, off-screen skip links and transformed
+  // decorations, which are the classic layout-wrapper false positives.
+  function hasFlowOverflow(el) {
+    const box = el.getBoundingClientRect();
+    const limit = box.left + el.clientWidth + FLOW_SLACK;
+    const stack = [...el.children];
+    let budget = 400; // cap work on huge subtrees
+    while (stack.length && budget-- > 0) {
+      const c = stack.pop();
+      const cs = getComputedStyle(c);
+      if (cs.display === "none" || cs.visibility === "hidden") continue;
+      if (cs.position === "absolute" || cs.position === "fixed") continue;
+      const r = c.getBoundingClientRect();
+      if (r.width > 0 && r.right > limit) return true;
+      // Descend only into children that are themselves not clipping.
+      if (c.children.length && cs.overflowX === "visible") stack.push(...c.children);
+    }
+    return false;
   }
 
   // ---------- apply / restore ----------
@@ -178,6 +229,7 @@
     if (!isViewport && yWasVisible && el.scrollHeight - el.clientHeight > 20) {
       restore(el);
       rejected.add(el);
+      log("reverted: would break vertical layout", el);
     }
   }
 
@@ -190,19 +242,34 @@
     const cs = getComputedStyle(el);
     if (cs.display === "none" || cs.visibility === "hidden") return;
     if (NO_OVERFLOW_DISPLAY.test(cs.display)) return;
-    if (cs.textOverflow && cs.textOverflow.includes("ellipsis")) return;
+    if (cs.textOverflow && cs.textOverflow.includes("ellipsis")) {
+      return log("skip: text-overflow ellipsis", el);
+    }
+    if (!needsFix(el, cs)) return;
+
+    if (isIntentionalClip(el)) return log("skip: intentional clip", el);
+
+    // Content that only overflows via out-of-flow descendants is not a
+    // table/grid being cut off, so leave the element alone.
+    if (!hasFlowOverflow(el)) return log("skip: no in-flow overflow", el);
 
     // Prefer fixing the innermost data table/grid rather than a generic wrapper.
     if (isDataLayout(el, cs)) {
-      if (isInnerScrollable(el, cs) && needsFix(el, cs)) {
+      if (isInnerScrollable(el, cs)) {
+        log("fix: data table/grid scroll container", el);
         fix(el, cs, false);
       }
       return;
     }
 
-    // Generic overflow containers still get a fix, but only after we have
-    // already handled obvious tables/grids.
-    if (isWrapCandidate(el, cs) && needsFix(el, cs)) fix(el, cs, false);
+    // Generic overflow containers: only when the element already is a real
+    // horizontal scroll container (auto/scroll with a hidden scrollbar) or
+    // clips with overflow hidden. Deepest-first ordering in scan() means a
+    // nested table/grid has already been handled by now.
+    if (isWrapCandidate(el, cs)) {
+      log("fix: generic overflow container (" + cs.overflowX + ")", el);
+      fix(el, cs, false);
+    }
   }
 
   function considerViewport() {
@@ -279,6 +346,7 @@
   }
 
   function apply(s) {
+    debug = debug || s.debug === true;
     isActive(s) ? start() : stop();
   }
 
