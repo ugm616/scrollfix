@@ -1,0 +1,11 @@
+body { font: 13px system-ui, sans-serif; width: 320px; padding: 12px; }
+h1 { font-size: 16px; margin: 0 0 8px; }
+.row { display: flex; gap: 6px; align-items: center; margin: 8px 0; }
+.row input[type="text"] { flex: 1; padding: 4px; }
+.title { font-weight: 600; margin: 10px 0 2px; }
+.muted { color: #666; font-size: 12px; margin: 2px 0 6px; }
+button { padding: 4px 8px; cursor: pointer; }
+ul { list-style: none; padding: 0; margin: 8px 0; max-height: 180px; overflow: auto; }
+li { display: flex; justify-content: space-between; align-items: center;
+     padding: 3px 0; border-bottom: 1px solid #ddd; }
+li button { border: none; background: none; color: #c00; font-size: 15px; }

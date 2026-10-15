@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <h1>ScrollFix</h1>
+
+    <label class="row">
+      <input type="checkbox" id="allowAll" />
+      <span><b>Allow All</b> (run on every site)</span>
+    </label>
+
+    <p id="listTitle" class="title"></p>
+    <p id="current" class="muted"></p>
+    <button id="addCurrent">Add current site</button>
+
+    <div class="row">
+      <input type="text" id="newSite" placeholder="example.com" />
+      <button id="addManual">Add</button>
+    </div>
+
+    <ul id="list"></ul>
+    <p class="muted">Reload the page if a change doesn't appear.</p>
+    <script src="popup.js"></script>
+  </body>
+</html>

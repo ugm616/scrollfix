@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "ScrollFix – Force Horizontal Scrollbars",
+  "version": "1.0.0",
+  "description": "Adds a horizontal scrollbar to elements that overflow but have scrolling blocked by the site.",
+  "permissions": ["storage", "activeTab", "tabs"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ScrollFix"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}
