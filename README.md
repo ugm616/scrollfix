@@ -1,4 +1,8 @@
-# ScrollFix
+<p align="center">
+  <img src="icons/scrollfix.svg" width="96" height="96" alt="ScrollFix logo" />
+</p>
+
+<h1 align="center">ScrollFix</h1>
 
 ScrollFix is a lightweight browser extension for **Microsoft Edge** and **Google Chrome** that restores horizontal scrolling on pages where a website blocks it.
 
@@ -144,7 +148,6 @@ If you want, this extension could be expanded later to include:
 - a keyboard shortcut
 - export/import of site lists
 - an options page
-- additional icon branding
 - packaging instructions for internal distribution
 
 ---

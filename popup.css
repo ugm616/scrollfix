@@ -11,3 +11,9 @@ ul { list-style: none; padding: 0; margin: 8px 0; max-height: 180px; overflow: a
 li { display: flex; justify-content: space-between; align-items: center;
      padding: 3px 0; border-bottom: 1px solid #ddd; }
 li button { border: none; background: none; color: #c00; font-size: 15px; }
+:root { color-scheme: light dark; }
+@media (prefers-color-scheme: dark) {
+  .muted { color: #9aa7b4; }
+  li { border-bottom-color: #3a4652; }
+  li button { color: #ff7b7b; }
+}
